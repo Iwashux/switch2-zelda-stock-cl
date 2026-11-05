@@ -33,8 +33,11 @@ const ML_STORE_URL = "https://www.mercadolibre.cl/tienda/nintendo";
 const ZONA_GAMER_FB_URL = "https://web.facebook.com/p/Zona-Gamer-Iquique-100063732433382/";
 const ZONA_GAMER_MIRROR_URL = "https://www.govern1.com/CL/Iquique/100213088361257/Zona-Gamer-Iquique";
 
+// Con `parse`, la página ya trae nombre/precio/stock (la ficha no se abre:
+// Falabella la protege con Cloudflare). Sin `parse`, se siguen los enlaces.
 const RETAILER_WATCH_PAGES = [
-  { name: "Falabella", url: "https://www.falabella.com/falabella-cl/shop/nintendo-switch-2" },
+  { name: "Falabella", url: "https://www.falabella.com/falabella-cl/search?Ntt=switch+2+zelda+40", parse: falabellaResults },
+  { name: "PC Factory", url: "https://api.pcfactory.cl/pcfactory-services-catalogo/v1/catalogo/productos?page=0&size=24&search=switch+2+zelda", parse: pcFactoryResults },
   { name: "Bestmart", url: "https://bestmart.cl/collections/nintendo-switch-2-zelda-edicion-40-aniversario" },
   { name: "Ripley", url: "https://simple.ripley.cl/tecno/nintendo/consolas?s=mdco&type=catalog" },
   { name: "Lider", url: "https://www.lider.cl/browse/tecno/videojuegos/nintendo/66849718_80980590_97449970" },
@@ -457,6 +460,49 @@ function catalogCandidateLinks(html, baseUrl) {
   return out;
 }
 
+function falabellaResults(html) {
+  const data = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i)?.[1];
+  if (!data) return [];
+  const byUrl = new Map();
+  walk(JSON.parse(data), (obj) => {
+    if (typeof obj.displayName !== "string" || typeof obj.url !== "string") return;
+    if (!target40Nearby(obj.displayName)) return;
+    const prices = [].concat(obj.prices || [])
+      .filter((p) => !p.crossed)
+      .flatMap((p) => [].concat(p.price || []))
+      .map(money)
+      .filter(Boolean);
+    byUrl.set(obj.url, {
+      url: obj.url,
+      http: 200,
+      // shortcut: el buscador de Falabella solo lista productos con stock; si empieza a mostrar agotados, leer otro campo.
+      status: "available",
+      price_clp: prices.length ? Math.min(...prices) : null,
+      title: obj.displayName,
+      seller: obj.sellerName || null,
+    });
+  });
+  return [...byUrl.values()];
+}
+
+function pcFactoryResults(body) {
+  const items = JSON.parse(body)?.content?.items || [];
+  return items
+    .filter((item) => target40Nearby(item.nombre || ""))
+    .map((item) => ({
+      url: `https://www.pcfactory.cl/producto/${item.slug}`,
+      http: 200,
+      // stock llega como "3", "+100" o "0".
+      status: Number(String(item.stock || "0").replace(/\D/g, "")) > 0 ? "available" : "unavailable",
+      price_clp: money(Math.round(Number(item.precio?.efectivo))),
+      title: item.nombre,
+    }));
+}
+
+function isExternalSeller(seller) {
+  return Boolean(seller) && !/^falabella(\.com)?$/i.test(seller.trim());
+}
+
 async function inspectRetailerCatalogs() {
   const candidates = [];
   const statuses = [];
@@ -468,7 +514,8 @@ async function inspectRetailerCatalogs() {
         headers: {
           "user-agent": USER_AGENT,
           "accept-language": "es-CL,es;q=0.9",
-          accept: "text/html,application/xhtml+xml",
+          // JSON para la API de PC Factory (sin él responde 406).
+          accept: "text/html,application/xhtml+xml,application/json;q=0.9",
         },
       });
 
@@ -482,6 +529,15 @@ async function inspectRetailerCatalogs() {
       const first = (title + " " + normalize(html.slice(0, 30000))).toLowerCase();
       if (CHALLENGE.some((x) => first.includes(x))) {
         statuses.push(retailer.name + ":blocked");
+        continue;
+      }
+
+      if (retailer.parse) {
+        const found = retailer.parse(html);
+        for (const item of found) {
+          candidates.push({ name: retailer.name + " · catálogo", ...item, source: "retailer_catalog", retailer: retailer.name });
+        }
+        statuses.push(retailer.name + ":" + (found.length ? "candidate_" + found.length : "not_found"));
         continue;
       }
 
@@ -869,7 +925,8 @@ function sameSnapshot(a, b) {
     a?.status === b?.status &&
     a?.price_clp === b?.price_clp &&
     a?.http === b?.http &&
-    a?.title === b?.title
+    a?.title === b?.title &&
+    a?.seller === b?.seller
   );
 }
 
@@ -884,6 +941,9 @@ function describe(current, oldSnap = null, isNew = false) {
     "",
     `- Estado: ${oldSnap ? statusLabel(oldSnap.status) : "—"} → **${statusLabel(current.status)}**`,
     `- Precio: ${formatPrice(oldSnap?.price_clp)} → **${formatPrice(current.price_clp)}**`,
+    ...(current.seller
+      ? [`- Vendedor: ${current.seller}${isExternalSeller(current.seller) ? " ⚠️ **vendedor externo (no es Falabella)**" : ""}`]
+      : []),
     `- Enlace: ${current.url}`,
   ].join("\n");
 }
@@ -1202,6 +1262,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
         status: current.status,
         price_clp: current.price_clp,
         title: current.title,
+        ...(current.seller ? { seller: current.seller } : {}),
       };
 
       if (!state.retailer_discovered[current.url]) {
@@ -1396,4 +1457,5 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
   };
 }
 
-export { runMonitor, sendTelegram };
+// falabellaResults, pcFactoryResults e isExternalSeller se exportan para cloudflare/selftest.mjs.
+export { runMonitor, sendTelegram, falabellaResults, pcFactoryResults, isExternalSeller };
