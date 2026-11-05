@@ -1,9 +1,5 @@
 const STORES = [
   {
-    name: "Bestmart",
-    url: "https://bestmart.cl/products/consola-nintendo-switch-2-the-legend-of-zelda-edicion-40-aniversario",
-  },
-  {
     name: "Santo Games",
     url: "https://www.santogames.cl/nintendo-switch-2-the-legend-of-zelda-40%C2%BA-aniversario",
   },
@@ -13,7 +9,7 @@ const STORES = [
   },
   {
     name: "Mathogames",
-    url: "https://www.mathogames.cl/consolas-switch-2/2538-preventa-dia-1-consola-nintendo-switch-2-the-legend-of-zelda-40th-anniversary.html",
+    url: "https://www.mathogames.cl/consolas-switch-2/2570-consola-nintendo-switch-2-the-legend-of-zelda-40th-anniversary.html",
   },
   {
     name: "TodoJuegos",
@@ -21,11 +17,15 @@ const STORES = [
   },
   {
     name: "WePlay",
-    url: "https://www.weplay.cl/preventa-consola-switch-2-the-legend-of-zelda-40th-aniversario.html",
+    url: "https://www.weplay.cl/consola-switch-2-the-legend-of-zelda-40th-aniversario.html",
+  },
+  {
+    name: "WePlay (HK)",
+    url: "https://www.weplay.cl/consola-nintendo-switch-2-zelda-aniversario-hk.html",
   },
   {
     name: "Paris",
-    url: "https://www.paris.cl/preventa-consola-nintendo-switch-2-the-legend-of-zelda-40th-aniversario-609811999.html",
+    url: "https://www.paris.cl/consola-nintendo-switch-2-the-legend-of-zelda-40th-aniversario-609811999.html",
   },
 ];
 
@@ -34,7 +34,8 @@ const ZONA_GAMER_FB_URL = "https://web.facebook.com/p/Zona-Gamer-Iquique-1000637
 const ZONA_GAMER_MIRROR_URL = "https://www.govern1.com/CL/Iquique/100213088361257/Zona-Gamer-Iquique";
 
 const RETAILER_WATCH_PAGES = [
-  { name: "Falabella", url: "https://www.falabella.com/falabella-cl/collection/nintendo-switch-2" },
+  { name: "Falabella", url: "https://www.falabella.com/falabella-cl/shop/nintendo-switch-2" },
+  { name: "Bestmart", url: "https://bestmart.cl/collections/nintendo-switch-2-zelda-edicion-40-aniversario" },
   { name: "Ripley", url: "https://simple.ripley.cl/tecno/nintendo/consolas?s=mdco&type=catalog" },
   { name: "Lider", url: "https://www.lider.cl/browse/tecno/videojuegos/nintendo/66849718_80980590_97449970" },
   { name: "Sniper", url: "https://sniper.cl/collections/todos-los-productos" },
