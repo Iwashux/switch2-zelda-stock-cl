@@ -1,6 +1,6 @@
-name: Probar aviso Telegram
+name: Probar avisos
 
-run-name: 📲 Prueba Telegram
+run-name: 📲 Prueba de avisos
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
     steps:
       - name: Descargar repositorio
         uses: actions/checkout@v4
@@ -21,8 +21,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Enviar mensaje de prueba
+      - name: Enviar avisos de prueba
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: node cloudflare/test-telegram.mjs
+        run: node cloudflare/test-alerts.mjs

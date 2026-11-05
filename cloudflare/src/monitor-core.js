@@ -1396,4 +1396,4 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
   };
 }
 
-export { runMonitor };
+export { runMonitor, sendTelegram };
