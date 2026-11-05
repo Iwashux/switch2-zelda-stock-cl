@@ -954,7 +954,7 @@ async function githubGetWithRetry(env, url, attempts = 3, timeoutMs = 12000) {
 }
 
 async function loadState(env) {
-  const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${STATE_PATH}`;
+  const url = `https://api.github.com/repos/${env.GITHUB_REPOSITORY}/contents/${STATE_PATH}`;
   const r = await githubGetWithRetry(env, url);
   if (r.status === 404) {
     return {
@@ -968,7 +968,7 @@ async function loadState(env) {
 }
 
 async function saveState(env, state, sha) {
-  const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${STATE_PATH}`;
+  const url = `https://api.github.com/repos/${env.GITHUB_REPOSITORY}/contents/${STATE_PATH}`;
   const body = {
     message: "chore: actualizar estado Cloudflare monitor [skip ci]",
     content: utf8ToBase64(`${JSON.stringify(state, null, 2)}\n`),
@@ -985,17 +985,11 @@ async function saveState(env, state, sha) {
 }
 
 async function createIssue(env, title, body) {
-  const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/issues`;
-  const notifyUser = "Baaaaar1";
-  const mentionedBody =
-    `📣 Aviso también para @${notifyUser}\n\n` + body;
+  const url = `https://api.github.com/repos/${env.GITHUB_REPOSITORY}/issues`;
+  const owner = env.GITHUB_REPOSITORY.split("/")[0];
 
-  // Intentamos asignar el Issue a ambos usuarios.
-  let payload = {
-    title,
-    body: mentionedBody,
-    assignees: [env.GITHUB_OWNER, notifyUser],
-  };
+  // Asignar al dueño hace que GitHub le notifique el Issue.
+  let payload = { title, body, assignees: [owner] };
 
   let r = await fetch(url, {
     method: "POST",
@@ -1003,15 +997,9 @@ async function createIssue(env, title, body) {
     body: JSON.stringify(payload),
   });
 
-  // GitHub puede rechazar un assignee que no tenga permisos suficientes en el repo.
-  // En ese caso creamos igualmente el Issue asignado al dueño y mantenemos la
-  // mención @Baaaaar1 en el cuerpo, que sirve como notificación alternativa.
+  // GitHub rechaza (422) un assignee sin permisos: se crea igual sin asignar.
   if (r.status === 422) {
-    payload = {
-      title,
-      body: mentionedBody,
-      assignees: [env.GITHUB_OWNER],
-    };
+    payload = { title, body };
     r = await fetch(url, {
       method: "POST",
       headers: { ...githubHeaders(env), "content-type": "application/json" },
@@ -1407,79 +1395,5 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
     stores: checks,
   };
 }
-
-export default {
-  async scheduled(controller, env, ctx) {
-    ctx.waitUntil(
-      runMonitor(env, controller.scheduledTime)
-        .then((result) => {
-          const readable =
-            `MONITOR OK · ${result.checked_stores} tiendas · ` +
-            `${result.reliable_stores} lecturas fiables · ` +
-            `${result.skipped_stores} bloqueadas/no concluyentes · ` +
-            `${result.alerts} alertas · ` +
-            `Mercado Libre: ${result.mercado_libre} · ` +
-            `Zona Gamer: ${result.zona_gamer} · ` +
-            `social: ${result.social_ran ? "sí" : "no"} · ` +
-            `búsqueda amplia: ${result.discovery_ran ? "sí" : "no"} · ` +
-            `nuevas: ${result.discovered_new}`;
-
-          console.log(readable);
-          console.log(JSON.stringify({
-            event: "monitor_cycle",
-            ok: true,
-            scheduled_time: new Date(controller.scheduledTime).toISOString(),
-            ...result,
-          }));
-        })
-        .catch((err) => {
-          console.error(JSON.stringify({
-            event: "monitor_cycle",
-            ok: false,
-            scheduled_time: new Date(controller.scheduledTime).toISOString(),
-            error: err?.stack || String(err),
-          }));
-          throw err;
-        }),
-    );
-  },
-
-  async fetch(request, env) {
-    const url = new URL(request.url);
-
-    if (url.pathname === "/" || url.pathname === "/health") {
-      return Response.json({
-        ok: true,
-        service: "switch2-zelda-stock-cl",
-        scheduler: "Cloudflare Cron",
-        cron: "* * * * *",
-        interval: "1 minute",
-        known_stores: STORES.map((s) => s.name),
-        mercado_libre_official: true,
-        zona_gamer_iquique_facebook: true,
-        social_every_minutes: 5,
-        discovery_every_minutes: 15,
-        expanded_preorder_search: true,
-        social_search: ["facebook", "instagram"],
-        github_token_configured: Boolean(env.GITHUB_TOKEN),
-        notification_users: [env.GITHUB_OWNER, "Baaaaar1"],
-        now: new Date().toISOString(),
-      });
-    }
-
-    if (url.pathname === "/run") {
-      const auth = request.headers.get("authorization") || "";
-      if (!env.RUN_TOKEN || auth !== `Bearer ${env.RUN_TOKEN}`) {
-        return new Response("Unauthorized", { status: 401 });
-      }
-      const result = await runMonitor(env, Date.now(), true);
-      console.log(`MANUAL RUN OK · ${result.checked_stores} tiendas · ${result.alerts} alertas · nuevas: ${result.discovered_new}`);
-      return Response.json({ ok: true, ...result });
-    }
-
-    return new Response("Not found", { status: 404 });
-  },
-};
-
 
 export { runMonitor };

@@ -1,9 +1,6 @@
 import { appendFile } from "node:fs/promises";
 import { runMonitor } from "./src/monitor-core.js";
 
-const repo = process.env.GITHUB_REPOSITORY || "jsantiscl/switch2-zelda-stock-cl";
-const [owner, name] = repo.split("/");
-
 const scheduledRaw = process.env.SCHEDULED_TIME || "";
 const scheduledTime = scheduledRaw ? Date.parse(scheduledRaw) : Date.now();
 
@@ -13,14 +10,16 @@ if (!Number.isFinite(scheduledTime)) {
 
 const env = {
   GITHUB_TOKEN: process.env.GITHUB_TOKEN,
-  GITHUB_OWNER: owner,
-  GITHUB_REPO: name,
+  GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY,
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID,
 };
 
 if (!env.GITHUB_TOKEN) {
   throw new Error("Missing GITHUB_TOKEN in GitHub Actions");
+}
+if (!/^[^/]+\/[^/]+$/.test(env.GITHUB_REPOSITORY || "")) {
+  throw new Error("Missing GITHUB_REPOSITORY (owner/repo)");
 }
 
 function statusText(status) {

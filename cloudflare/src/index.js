@@ -16,7 +16,7 @@ async function hasActiveMonitorRun(env) {
 
   try {
     const url =
-      `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/actions/runs?event=repository_dispatch&per_page=10`;
+      `https://api.github.com/repos/${env.GITHUB_REPOSITORY}/actions/runs?event=repository_dispatch&per_page=10`;
 
     const response = await fetch(url, {
       headers: githubHeaders(env),
@@ -56,13 +56,14 @@ async function hasActiveMonitorRun(env) {
 
 async function dispatchMonitor(env, scheduledTime, source = "cron") {
   if (!env.GITHUB_TOKEN) throw new Error("Missing GITHUB_TOKEN secret");
+  if (!env.GITHUB_REPOSITORY) throw new Error("Missing GITHUB_REPOSITORY var (owner/repo)");
 
   if (source === "cron" && await hasActiveMonitorRun(env)) {
     return { dispatched: false, reason: "active_run" };
   }
 
   const url =
-    `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/dispatches`;
+    `https://api.github.com/repos/${env.GITHUB_REPOSITORY}/dispatches`;
 
   const response = await fetch(url, {
     method: "POST",
@@ -117,8 +118,7 @@ export default {
         cron: "* * * * *",
         interval: "1 minute",
         github_token_configured: Boolean(env.GITHUB_TOKEN),
-        github_repository: `${env.GITHUB_OWNER}/${env.GITHUB_REPO}`,
-        notification_users: [env.GITHUB_OWNER, "Baaaaar1"],
+        github_repository: env.GITHUB_REPOSITORY || null,
         now: new Date().toISOString(),
       });
     }
