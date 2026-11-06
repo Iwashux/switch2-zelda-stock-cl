@@ -1,5 +1,5 @@
 // Prueba manual de los canales de aviso. Los que no estén configurados se omiten.
-import { sendTelegram } from "./src/monitor-core.js";
+import { sendTelegram, sendNtfy } from "./src/monitor-core.js";
 
 const env = process.env;
 
@@ -20,6 +20,12 @@ if (env.TELEGRAM_BOT_TOKEN && !env.TELEGRAM_CHAT_ID) {
 
 const results = {
   telegram: await sendTelegram(env, "PRUEBA del monitor Zelda", "Si ves este mensaje, los avisos por Telegram funcionan."),
+  [env.NTFY_EMAIL ? "ntfy + correo" : "ntfy"]: await sendNtfy(
+    env,
+    "PRUEBA del monitor Zelda",
+    "Si ves esta notificación, ntfy funciona." + (env.NTFY_EMAIL ? " También debería llegarte un correo." : ""),
+    `https://github.com/${env.GITHUB_REPOSITORY || ""}`,
+  ),
 };
 
 console.table(Object.fromEntries(

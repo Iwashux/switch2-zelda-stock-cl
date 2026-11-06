@@ -1152,15 +1152,69 @@ async function sendTelegram(env, title, body) {
   return { sent: true, reason: null };
 }
 
+async function sendNtfy(env, title, message, clickUrl) {
+  if (!env.NTFY_TOPIC) {
+    console.warn("NTFY SKIPPED · falta NTFY_TOPIC");
+    return { sent: false, reason: "not_configured" };
+  }
+
+  const headers = {
+    // Los headers HTTP solo admiten ASCII: se quitan tildes y emojis.
+    Title: title.normalize("NFD").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim(),
+    Priority: "high",
+    Tags: "rotating_light,video_game",
+    Click: new URL(clickUrl).href,
+  };
+  if (env.NTFY_EMAIL) headers.Email = env.NTFY_EMAIL;
+
+  const r = await fetch(`https://ntfy.sh/${encodeURIComponent(env.NTFY_TOPIC)}`, {
+    method: "POST",
+    headers,
+    body: message,
+  });
+
+  if (!r.ok) {
+    console.error(`NTFY ERROR · ${r.status} · ${await r.text()}`);
+    return { sent: false, reason: `http_${r.status}` };
+  }
+
+  console.log(`NTFY OK${env.NTFY_EMAIL ? " · con correo" : ""}`);
+  return { sent: true, reason: null };
+}
+
+function ntfyMessage(current) {
+  return [
+    `${statusLabel(current.status)} · ${formatPrice(current.price_clp)}`,
+    `Región: ${current.region || "Región no indicada"}`,
+    ...(current.seller
+      ? [`Vendedor: ${current.seller}${isExternalSeller(current.seller) ? " ⚠️ externo (no es Falabella)" : ""}`]
+      : []),
+    current.title || "",
+  ].filter(Boolean).join("\n");
+}
+
 async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = false) {
-  if (!env.GITHUB_TOKEN) throw new Error("Missing GITHUB_TOKEN secret");
-  const { sha, state } = await loadState(env);
+  const dryRun = Boolean(env.DRY_RUN);
+  if (!dryRun && !env.GITHUB_TOKEN) throw new Error("Missing GITHUB_TOKEN secret");
+  // DRY_RUN: estado entregado por el llamador; sin commit, Issue ni avisos.
+  const { sha, state } = dryRun
+    ? { sha: null, state: structuredClone(env.DRY_RUN_STATE || { version: 1, initialized: false, stores: {}, discovered: {} }) }
+    : await loadState(env);
   state.stores ||= {};
   state.discovered ||= {};
   state.retailer_discovered ||= {};
   state.pending_available ||= {};
   const initialized = Boolean(state.initialized);
   const alerts = [];
+  const pushes = [];
+  const addAlert = (current, old, isNew) => {
+    alerts.push(describe(current, old, isNew));
+    // Push y correo solo con disponibilidad real: nada de cambios de precio
+    // ni posibles posts en redes sociales (esos van solo a Issue/Telegram).
+    const becameAvailable = current.status === "available" && (isNew || old?.status !== "available");
+    const social = current.source === "social_search" || String(current.source || "").startsWith("zona_gamer");
+    if (becameAvailable && !social) pushes.push(current);
+  };
   const checks = [];
   let dirty = false;
   let reliableStores = 0;
@@ -1177,6 +1231,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
       status: current.status,
       price_clp: current.price_clp,
       http: current.http,
+      region: current.region,
     });
 
     if (["error", "unknown"].includes(current.status)) {
@@ -1237,7 +1292,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
 
       delete state.pending_available[current.url];
       dirty = true;
-      alerts.push(describe(current, old, false));
+      addAlert(current, old, false);
     } else {
       if (state.pending_available[current.url]) {
         delete state.pending_available[current.url];
@@ -1245,7 +1300,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
       }
 
       if (initialized && old && actionableChange(old, current, false)) {
-        alerts.push(describe(current, old, false));
+        addAlert(current, old, false);
       }
     }
 
@@ -1272,7 +1327,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
       title: ml.title,
       url: ml.url,
     };
-    if (initialized && (!old || actionableChange(old, ml, !old))) alerts.push(describe(ml, old, !old));
+    if (initialized && (!old || actionableChange(old, ml, !old))) addAlert(ml, old, !old);
     if (!old || !sameSnapshot(old, snapshot)) {
       state.stores[key] = {
         name: ml.name,
@@ -1295,6 +1350,14 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
     retailerCatalogResult = catalog.monitor_status;
 
     for (const current of catalog.candidates) {
+      checks.push({
+        name: current.name,
+        status: current.status,
+        price_clp: current.price_clp,
+        http: current.http,
+        region: current.region,
+        seller: current.seller,
+      });
       const old = state.stores[current.url]?.snapshot || null;
       const snapshot = {
         http: current.http,
@@ -1345,7 +1408,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
 
         delete state.pending_available[current.url];
         dirty = true;
-        alerts.push(describe(current, old, !old));
+        addAlert(current, old, !old);
       } else {
         if (state.pending_available[current.url]) {
           delete state.pending_available[current.url];
@@ -1353,7 +1416,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
         }
 
         if (initialized && old && actionableChange(old, current, false)) {
-          alerts.push(describe(current, old, false));
+          addAlert(current, old, false);
         }
       }
 
@@ -1386,7 +1449,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
       };
 
       if (initialized) {
-        alerts.push(describe(current, null, true));
+        addAlert(current, null, true);
       }
       dirty = true;
     }
@@ -1406,7 +1469,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
       };
 
       if (initialized && actionableChange(null, current, true)) {
-        alerts.push(describe(current, null, true));
+        addAlert(current, null, true);
       }
       discoveredNew += 1;
       dirty = true;
@@ -1436,7 +1499,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
         last_changed_at: new Date(scheduledTime).toISOString(),
       };
       if (initialized && actionableChange(null, current, true)) {
-        alerts.push(describe(current, null, true));
+        addAlert(current, null, true);
       }
       discoveredNew += 1;
       dirty = true;
@@ -1449,11 +1512,16 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
   }
   state.version = 1;
 
-  if (dirty) await saveState(env, state, sha);
+  if (dirty && !dryRun) await saveState(env, state, sha);
 
   let telegramResult = { sent: false, reason: "no_alerts" };
+  let ntfySent = 0;
 
-  if (alerts.length) {
+  if (alerts.length && dryRun) {
+    console.log("[DRY_RUN] Issue y Telegram omitidos. Contenido:\n" + alerts.join("\n\n"));
+    for (const current of pushes) console.log(`[DRY_RUN] ntfy omitido · ${current.name} · ${current.url}`);
+    telegramResult = { sent: false, reason: "dry_run" };
+  } else if (alerts.length) {
     const body = [
       "# Switch 2 Zelda 40th — alerta",
       "",
@@ -1466,21 +1534,43 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
 
     const title = `Switch 2 Zelda 40th: ${alerts.length} novedad(es)`;
 
-    await createIssue(env, `🚨 ${title}`, body);
+    // El estado ya se guardó: si el Issue falla, igual hay que intentar los
+    // otros canales, o la alerta se perdería. El error se relanza al final.
+    let issueError = null;
+    try {
+      await createIssue(env, `🚨 ${title}`, body);
+    } catch (err) {
+      issueError = err;
+      console.error("ISSUE ERROR", err?.stack || String(err));
+    }
 
-    // Telegram es un canal adicional: si falla, no invalida la alerta de GitHub.
     try {
       telegramResult = await sendTelegram(env, title, body);
     } catch (err) {
       telegramResult = { sent: false, reason: "exception" };
       console.error("TELEGRAM EXCEPTION", err?.stack || String(err));
     }
+
+    // Un push por tienda, cada uno con su propio enlace "Click".
+    for (const current of pushes) {
+      try {
+        const r = await sendNtfy(env, `Zelda 40: disponible en ${current.name}`, ntfyMessage(current), current.url);
+        if (r.sent) ntfySent += 1;
+      } catch (err) {
+        console.error("NTFY EXCEPTION", err?.stack || String(err));
+      }
+    }
+
+    if (issueError) throw issueError;
   }
 
   return {
     alerts: alerts.length,
     telegram_sent: telegramResult.sent,
     telegram_reason: telegramResult.reason,
+    ntfy_pushes: pushes.length,
+    ntfy_sent: ntfySent,
+    dry_run: dryRun,
     dirty,
     initialized: true,
     checked_stores: STORES.length,
@@ -1498,5 +1588,5 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
   };
 }
 
-// Los parsers y detectRegion se exportan para cloudflare/selftest.mjs.
-export { runMonitor, sendTelegram, falabellaResults, pcFactoryResults, isExternalSeller, detectRegion };
+// Además de runMonitor: usados por test-alerts.mjs y selftest.mjs.
+export { runMonitor, sendTelegram, sendNtfy, falabellaResults, pcFactoryResults, isExternalSeller, detectRegion };

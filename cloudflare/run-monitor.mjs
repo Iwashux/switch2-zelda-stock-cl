@@ -1,5 +1,9 @@
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { runMonitor } from "./src/monitor-core.js";
+
+// DRY_RUN=1: usa state/ local, revisa todas las fuentes y no hace commit,
+// no crea Issues ni envía avisos. No necesita tokens.
+const dryRun = process.env.DRY_RUN === "1";
 
 const scheduledRaw = process.env.SCHEDULED_TIME || "";
 const scheduledTime = scheduledRaw ? Date.parse(scheduledRaw) : Date.now();
@@ -13,12 +17,18 @@ const env = {
   GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY,
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID,
+  NTFY_TOPIC: process.env.NTFY_TOPIC,
+  NTFY_EMAIL: process.env.NTFY_EMAIL,
+  DRY_RUN: dryRun,
+  DRY_RUN_STATE: dryRun
+    ? JSON.parse(await readFile(new URL("../state/cloudflare-state.json", import.meta.url), "utf8"))
+    : undefined,
 };
 
-if (!env.GITHUB_TOKEN) {
+if (!dryRun && !env.GITHUB_TOKEN) {
   throw new Error("Missing GITHUB_TOKEN in GitHub Actions");
 }
-if (!/^[^/]+\/[^/]+$/.test(env.GITHUB_REPOSITORY || "")) {
+if (!dryRun && !/^[^/]+\/[^/]+$/.test(env.GITHUB_REPOSITORY || "")) {
   throw new Error("Missing GITHUB_REPOSITORY (owner/repo)");
 }
 
@@ -59,7 +69,7 @@ async function writeSummary(result) {
   if (!summaryPath) return;
 
   const rows = (result.stores || []).map((store) =>
-    `| ${safeCell(store.name)} | ${safeCell(statusText(store.status))} | ${safeCell(priceText(store.price_clp))} | ${safeCell(store.http ?? "—")} |`
+    `| ${safeCell(store.name)} | ${safeCell(statusText(store.status))} | ${safeCell(priceText(store.price_clp))} | ${safeCell(store.region)} | ${safeCell(store.seller)} | ${safeCell(store.http ?? "—")} |`
   );
 
   const telegram = result.telegram_sent
@@ -76,11 +86,11 @@ async function writeSummary(result) {
     `**Revisión:** ${new Date(scheduledTime).toISOString()}  `,
     `**Resultado:** ${result.alerts > 0 ? "🚨 " + result.alerts + " alerta(s)" : "✅ Sin novedades accionables"}`,
     "",
-    "## Tiendas conocidas",
+    "## Tiendas y catálogos",
     "",
-    "| Tienda | Estado | Precio | HTTP |",
-    "|---|---|---:|---:|",
-    ...(rows.length ? rows : ["| — | — | — | — |"]),
+    "| Tienda | Estado | Precio | Región | Vendedor | HTTP |",
+    "|---|---|---:|---|---|---:|",
+    ...(rows.length ? rows : ["| — | — | — | — | — | — |"]),
     "",
     "## Fuentes adicionales",
     "",
@@ -99,17 +109,28 @@ async function writeSummary(result) {
     `- **Nuevas publicaciones detectadas:** ${result.discovered_new}`,
     `- **Confirmaciones de disponibilidad pendientes:** ${result.pending_availability_confirmations || 0}`,
     `- **Telegram:** ${telegram}`,
+    `- **ntfy (push/correo):** ${result.ntfy_sent} de ${result.ntfy_pushes} aviso(s) de disponibilidad`,
     "",
   ].join("\n");
 
   await appendFile(summaryPath, markdown, "utf8");
 }
 
-const result = await runMonitor(env, scheduledTime, false);
+const result = await runMonitor(env, scheduledTime, dryRun);
+
+if (dryRun) {
+  console.table(result.stores.map((s) => ({
+    Tienda: s.name,
+    Estado: statusText(s.status),
+    Precio: priceText(s.price_clp),
+    Región: s.region || "—",
+    Vendedor: s.seller || "",
+  })));
+}
 
 console.log(
   [
-    "MONITOR GITHUB OK",
+    dryRun ? "MONITOR DRY_RUN OK" : "MONITOR GITHUB OK",
     `${result.checked_stores} tiendas`,
     `${result.reliable_stores} lecturas fiables`,
     `${result.skipped_stores} bloqueadas/no concluyentes`,
@@ -122,6 +143,7 @@ console.log(
     `nuevas: ${result.discovered_new}`,
     `confirmaciones pendientes: ${result.pending_availability_confirmations || 0}`,
     `Telegram: ${result.telegram_sent ? "enviado" : result.telegram_reason}`,
+    `ntfy: ${result.ntfy_sent}/${result.ntfy_pushes}`,
   ].join(" · "),
 );
 
