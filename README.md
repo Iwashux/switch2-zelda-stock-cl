@@ -10,7 +10,7 @@ Monitor que avisa cuando aparece **stock o preventa** de la Nintendo Switch 2 �
 - Solo acepta productos que mencionan **Switch 2 + Zelda + 40 aniversario** (no juegos, amiibos ni accesorios).
 - Ignora páginas anti-bot, errores y lecturas no concluyentes.
 - Exige **dos lecturas fiables consecutivas** antes de avisar que algo pasó a disponible.
-- La **primera ejecución** construye una línea base y no avisa nada antiguo.
+- La **primera ejecución** guarda una línea base: las fichas fijas no avisan lo que ya estaba disponible; en los catálogos (Falabella, PC Factory…) lo que ya está disponible sí se avisa tras la doble lectura.
 - Detecta la **región/versión** de cada ficha (americana, Hong Kong, japonesa ⚠️, europea, global).
 - En el marketplace de Falabella registra el **vendedor** y marca con ⚠️ cuando no es Falabella.
 - Avisa por **GitHub Issue** (siempre), **Telegram** (opcional) y **ntfy** push/correo (opcional).
