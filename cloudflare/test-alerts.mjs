@@ -7,6 +7,7 @@ if (env.TELEGRAM_BOT_TOKEN && !env.TELEGRAM_CHAT_ID) {
   // Ayuda para encontrar TELEGRAM_CHAT_ID: chats que le escribieron al bot.
   const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getUpdates?limit=100`);
   const data = await r.json();
+  if (!data.ok) console.log(`Telegram rechazó el token (${data.description}): vuelve a guardar TELEGRAM_BOT_TOKEN.`);
   const chats = new Map();
   for (const u of data.result || []) {
     const chat = (u.message || u.edited_message || u.channel_post || u.my_chat_member || {}).chat;
