@@ -57,6 +57,17 @@
         "seller": "Pocketzonecl"
       },
       "last_changed_at": "2026-11-06T03:44:37.694Z"
+    },
+    "https://www.paris.cl/consola-nintendo-switch-2-the-legend-of-zelda-40th-aniversario-609811999.html": {
+      "name": "Paris",
+      "snapshot": {
+        "http": 200,
+        "status": "available",
+        "price_clp": 669990,
+        "title": "Consola Nintendo Switch 2 The Legend of Zelda 40th Aniversario",
+        "region": "Región no indicada"
+      },
+      "last_changed_at": "2026-11-06T08:05:37.694Z"
     }
   },
   "discovered": {},
