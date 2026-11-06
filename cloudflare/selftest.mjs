@@ -1,6 +1,21 @@
 // Pruebas rápidas sin red: node cloudflare/selftest.mjs
 import assert from "node:assert/strict";
-import { falabellaResults, pcFactoryResults, isExternalSeller } from "./src/monitor-core.js";
+import { falabellaResults, pcFactoryResults, isExternalSeller, detectRegion } from "./src/monitor-core.js";
+
+const regions = [
+  ["Consola Nintendo Switch 2 – The Legend of Zelda 40th Anniversary Hong Kong Version", "045496885434", "Hong Kong"],
+  ["Consola Nintendo Switch 2 Zelda Aniversario HK", null, "Hong Kong"],
+  ["Nintendo Switch 2 Zelda 40 aniversario versión japonesa", null, "⚠️ Japonesa: solo funciona en japonés y con cuentas japonesas"],
+  ["Consola Switch 2 256GB The Legend of Zelda 40 - Versión Global Original", null, "Global"],
+  ["Nintendo Switch 2 Formato US, 256GB", null, "Americana"],
+  ["Switch 2 Zelda 40 edición USA", null, "Americana"],
+  ["Consola de EE.UU. Switch 2 Zelda", null, "Americana"],
+  ["Switch 2 Zelda 40 versión europea", null, "Europea"],
+  ["Nintendo Switch 2 – The Legend of Zelda 40.º Aniversario", "045496905897", "Americana (Nintendo of America)"],
+  ["Switch 2 Zelda 40: se usa con tu cuenta. Idiomas: inglés, japonés", null, "Región no indicada"],
+  ["Nintendo Switch 2 Zelda 40th", "4902370551234", "Región no indicada"],
+];
+for (const [text, gtin, expected] of regions) assert.equal(detectRegion(text, gtin), expected, text);
 
 const nextData = {
   props: {
@@ -21,6 +36,7 @@ const fal = falabellaResults(`<script id="__NEXT_DATA__" type="application/json"
 assert.equal(fal.length, 1);
 assert.equal(fal[0].price_clp, 829990);
 assert.equal(fal[0].seller, "Pocketzonecl");
+assert.equal(fal[0].region, "Global");
 assert.equal(isExternalSeller("Pocketzonecl"), true);
 assert.equal(isExternalSeller("Falabella"), false);
 assert.equal(isExternalSeller(null), false);

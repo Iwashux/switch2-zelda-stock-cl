@@ -146,6 +146,30 @@ function pageTitle(html = "") {
   return m ? normalize(m[1]) : null;
 }
 
+function metaDescription(html = "") {
+  const tag = html.match(/<meta[^>]+(?:name|property)=["'](?:og:)?description["'][^>]*>/i)?.[0] || "";
+  return tag.match(/content=["']([^"']*)["']/i)?.[1] || "";
+}
+
+// El orden importa: la advertencia japonesa primero, y el texto explícito
+// de la ficha gana al prefijo UPC (hay versiones HK con UPC 045496).
+const REGION_RULES = [
+  // (?!\p{L}) y no \b: en JS "é" cuenta como límite, y "japonés" (idioma) no es la región.
+  [/japonesa|jap[oó]n(?!\p{L})|\bjapan(?:ese)?\b/iu, "⚠️ Japonesa: solo funciona en japonés y con cuentas japonesas"],
+  [/hong\s*kong|\bhk\b/i, "Hong Kong"],
+  [/\bUSA\b|\bEE\.?\s?UU\b/, "Americana"], // sin /i: "usa" también es un verbo
+  [/americana|estados unidos|\b(?:formato|versi[oó]n)\s+us\b/i, "Americana"],
+  [/europea|\b(?:formato|versi[oó]n)\s+eu\b/i, "Europea"],
+  [/\bglobal\b/i, "Global"],
+];
+
+function detectRegion(text = "", gtin = null) {
+  const clean = normalize(text);
+  for (const [re, label] of REGION_RULES) if (re.test(clean)) return label;
+  if (/^0?045496\d{6}$/.test(String(gtin || ""))) return "Americana (Nintendo of America)";
+  return "Región no indicada";
+}
+
 function money(value) {
   if (value == null) return null;
   let s = String(value).replace(/CLP/gi, "").replace(/\$/g, "").replace(/\s/g, "").trim();
@@ -184,7 +208,7 @@ function parseJsonLd(html) {
     } catch (_) {}
   }
 
-  if (!candidates.length) return { price: null, availability: null, name: null };
+  if (!candidates.length) return { price: null, availability: null, name: null, description: "", gtin: null };
   candidates.sort((a, b) => b.score - a.score);
   const obj = candidates[0].obj;
   const offers = Array.isArray(obj.offers) ? obj.offers : [obj.offers];
@@ -203,6 +227,10 @@ function parseJsonLd(html) {
     price: prices.length ? Math.min(...prices) : null,
     availability,
     name: obj.name ? String(obj.name) : null,
+    description: typeof obj.description === "string" ? obj.description : "",
+    gtin: [obj.gtin12, obj.gtin13, obj.gtin, obj.gtin14, obj.sku]
+      .map((v) => String(v ?? ""))
+      .find((v) => /^\d{12,14}$/.test(v)) || null,
   };
 }
 
@@ -318,12 +346,18 @@ async function inspectStore(store) {
       if (price == null) status = "unavailable";
     }
 
+    // Solo texto de la propia ficha: la página completa trae productos
+    // relacionados con otros UPC y palabras como "global" en scripts.
+    const productText = [jsonld.name, jsonld.description, title, metaDescription(html)].join(" ");
+    const gtin = jsonld.gtin || productText.match(/\b0?045496\d{6}\b/)?.[0];
+
     return {
       ...store,
       http,
       status,
       price_clp: price,
       title: jsonld.name || title,
+      region: detectRegion(productText, gtin),
     };
   } catch (_) {
     return { ...store, http: null, status: "error", price_clp: null, title: null };
@@ -480,6 +514,7 @@ function falabellaResults(html) {
       price_clp: prices.length ? Math.min(...prices) : null,
       title: obj.displayName,
       seller: obj.sellerName || null,
+      region: detectRegion(obj.displayName),
     });
   });
   return [...byUrl.values()];
@@ -496,6 +531,7 @@ function pcFactoryResults(body) {
       status: Number(String(item.stock || "0").replace(/\D/g, "")) > 0 ? "available" : "unavailable",
       price_clp: money(Math.round(Number(item.precio?.efectivo))),
       title: item.nombre,
+      region: detectRegion(item.nombre),
     }));
 }
 
@@ -926,7 +962,8 @@ function sameSnapshot(a, b) {
     a?.price_clp === b?.price_clp &&
     a?.http === b?.http &&
     a?.title === b?.title &&
-    a?.seller === b?.seller
+    a?.seller === b?.seller &&
+    a?.region === b?.region
   );
 }
 
@@ -941,6 +978,7 @@ function describe(current, oldSnap = null, isNew = false) {
     "",
     `- Estado: ${oldSnap ? statusLabel(oldSnap.status) : "—"} → **${statusLabel(current.status)}**`,
     `- Precio: ${formatPrice(oldSnap?.price_clp)} → **${formatPrice(current.price_clp)}**`,
+    `- Región: ${current.region || "Región no indicada"}`,
     ...(current.seller
       ? [`- Vendedor: ${current.seller}${isExternalSeller(current.seller) ? " ⚠️ **vendedor externo (no es Falabella)**" : ""}`]
       : []),
@@ -1161,6 +1199,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
       status: current.status,
       price_clp: current.price_clp,
       title: current.title,
+      region: current.region,
     };
 
     const isAvailabilityTransition =
@@ -1262,6 +1301,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
         status: current.status,
         price_clp: current.price_clp,
         title: current.title,
+        region: current.region,
         ...(current.seller ? { seller: current.seller } : {}),
       };
 
@@ -1391,6 +1431,7 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
           status: current.status,
           price_clp: current.price_clp,
           title: current.title,
+          region: current.region,
         },
         last_changed_at: new Date(scheduledTime).toISOString(),
       };
@@ -1457,5 +1498,5 @@ async function runMonitor(env, scheduledTime = Date.now(), forceDiscovery = fals
   };
 }
 
-// falabellaResults, pcFactoryResults e isExternalSeller se exportan para cloudflare/selftest.mjs.
-export { runMonitor, sendTelegram, falabellaResults, pcFactoryResults, isExternalSeller };
+// Los parsers y detectRegion se exportan para cloudflare/selftest.mjs.
+export { runMonitor, sendTelegram, falabellaResults, pcFactoryResults, isExternalSeller, detectRegion };
