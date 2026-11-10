@@ -334,15 +334,16 @@ async function inspectStore(store) {
     }
 
     if (host.includes("santogames.cl")) {
-      // Santo Games mantiene "PREVENTA" permanentemente en la descripción.
-      // Si no hay disponibilidad estructurada positiva ni una acción real de
-      // compra/reserva, se considera cerrada/no disponible.
+      // Santo Games tiene "PREVENTA" fijo en la descripción y "agregar al
+      // carrito" en productos relacionados: solo vale el JSON-LD del producto.
+      // Sin JSON-LD la lectura no es concluyente (causaba avisos falsos que
+      // duraban 1-12 min).
       const av = String(jsonld.availability || "").toLowerCase();
       const structuredAvailable = ["instock", "preorder", "presale", "limitedavailability"]
         .some((x) => av.includes(x));
-      const purchaseAction = PURCHASE_SIGNALS.some((x) => visible.toLowerCase().includes(x));
 
-      if (!structuredAvailable && !purchaseAction) status = "unavailable";
+      if (!av) status = "unknown";
+      else if (!structuredAvailable) status = "unavailable";
       if (price == null) status = "unavailable";
     }
 
