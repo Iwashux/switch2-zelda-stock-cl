@@ -76,8 +76,21 @@
       "url": "https://www.falabella.com/falabella-cl/product/159555264/consola-nintendo-switch-2-256gb-the-legend-of-zelda-40-aniversario-edicion-especial",
       "retailer": "Falabella",
       "found_at": "2026-11-06T01:26:32.968Z"
+    },
+    "https://www.falabella.com/falabella-cl/product/159811107/estuche-de-transporte-nintendo-switch-2-the-legend-of-zelda-40-aniversario-con-protector-de-pantalla": {
+      "name": "Falabella · catálogo",
+      "url": "https://www.falabella.com/falabella-cl/product/159811107/estuche-de-transporte-nintendo-switch-2-the-legend-of-zelda-40-aniversario-con-protector-de-pantalla",
+      "retailer": "Falabella",
+      "found_at": "2026-11-12T06:34:37.694Z"
     }
   },
-  "pending_available": {},
+  "pending_available": {
+    "https://www.falabella.com/falabella-cl/product/159811107/estuche-de-transporte-nintendo-switch-2-the-legend-of-zelda-40-aniversario-con-protector-de-pantalla": {
+      "count": 1,
+      "signature": "{\"status\":\"available\",\"price_clp\":null,\"title\":\"Estuche de Transporte Switch 2 The Legend of Zelda 40 Aniversario con Protector de Pantalla\"}",
+      "first_seen_at": "2026-11-12T06:34:37.694Z",
+      "last_seen_at": "2026-11-12T06:34:37.694Z"
+    }
+  },
   "social_discovered": {}
 }
